@@ -46,10 +46,9 @@
   <label>Características deseadas (ej: menú, reseñas, galería, blog)</label>
   <input id="features" type="text" placeholder="menú, reseñas, galería" />
 
+  
   <button onclick="generatePrompt()">Generar prompt</button>
-
   <button onclick="generateTheme()">Generar tema automáticamente</button>
-
   <button id="downloadBtn" onclick="downloadZip()" disabled>Descargar ZIP</button>
 
 
@@ -103,55 +102,48 @@ Quiero que la respuesta sea lo más completa posible para poder copiar y pegar l
     }
   </script>
 
-<script>
-let lastRaw = null; // guardamos el JSON para el ZIP
-
-async function generateTheme() {
-  const payload = {
-    platform: document.getElementById('platform').value,
-    industry: document.getElementById('industry').value,
-    style: document.getElementById('style').value,
-    colors: document.getElementById('colors').value,
-    features: document.getElementById('features').value
-  };
-
-  const res = await fetch('/api/generar-tema', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-
-  const data = await res.json();
-
-  if (!data.raw) {
-    document.getElementById('prompt').value = "❌ Error generando archivos.";
-    document.getElementById('downloadBtn').disabled = true;
-    return;
-  }
-
-  // Intentamos parsear el JSON
-  try {
-    lastRaw = JSON.parse(data.raw);
+  <script>
+  async function generateTheme() {
+    const payload = {
+      platform: document.getElementById('platform').value,
+      industry: document.getElementById('industry').value,
+      style: document.getElementById('style').value,
+      colors: document.getElementById('colors').value,
+      features: document.getElementById('features').value
+    };
+  
+    const res = await fetch('/api/generar-tema', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  
+    if (!res.ok) {
+      document.getElementById('prompt').value = "❌ Error generando archivos.";
+      document.getElementById('downloadBtn').disabled = true;
+      return;
+    }
+  
+    // Recibimos ZIP directamente
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+  
     document.getElementById('prompt').value =
-      "✔ Archivos generados correctamente con: " + data.provider +
-      "\n\nVista previa del JSON:\n" +
-      JSON.stringify(lastRaw, null, 2);
-
+      "✔ Archivos generados correctamente.\n\nHaz clic en 'Descargar ZIP'.";
+  
+    // Guardamos URL temporal
+    window.lastZipUrl = url;
+  
     document.getElementById('downloadBtn').disabled = false;
-  } catch (e) {
-    document.getElementById('prompt').value =
-      "❌ Error: la IA devolvió JSON inválido.\n\nRAW:\n" + data.raw;
-
-    document.getElementById('downloadBtn').disabled = true;
   }
-}
-</script>
-
-<script>
-function downloadZip() {
-  alert("Aquí irá la descarga del ZIP (siguiente paso).");
-}
-</script>
+  
+  function downloadZip() {
+    const a = document.createElement('a');
+    a.href = window.lastZipUrl;
+    a.download = "shopify-theme.zip";
+    a.click();
+  }
+  </script>
 
 
 </body>
