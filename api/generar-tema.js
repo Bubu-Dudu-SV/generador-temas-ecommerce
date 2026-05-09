@@ -1,10 +1,9 @@
+import JSZip from "jszip";
+
 export default async function handler(req, res) {
   const { industry, style, colors, features, platform } = req.body;
 
   console.log("REQUEST_BODY:", { industry, style, colors, features, platform });
-
-  // Por ahora nos concentramos en Shopify
-  const effectivePlatform = platform || "shopify";
 
   const prompt = `
 Eres un experto en desarrollo de temas de Shopify.
@@ -26,29 +25,22 @@ REGLAS ESTRICTAS:
 - NO agregues archivos adicionales.
 - NO cambies los nombres.
 - NO inventes secciones nuevas.
-- NO uses “main-content”, “hero-section”, “grid-section” ni otros nombres.
 - SOLO usa los nombres EXACTOS listados arriba.
 - El archivo templates/index.json DEBE referenciar EXACTAMENTE esas secciones.
 - El JSON debe ser válido y parseable.
 - NO incluyas texto fuera del array JSON.
 - NO incluyas markdown.
 
-
-Contexto del tema:
-- Plataforma: ${effectivePlatform}
-- Industria: ${industry}
-- Estilo visual: ${style}
-- Colores principales: ${colors}
-- Características: ${features}
-
-Requisitos:
-- Usa Liquid y JSON válidos.
-- El archivo templates/index.json debe referenciar las secciones definidas.
-- El CSS debe ser simple pero usable.
-- settings_schema.json debe permitir cambiar colores principales y textos básicos.
-
-DEVUELVE ÚNICAMENTE el JSON del array, SIN TEXTO EXPLICATIVO, SIN COMENTARIOS, SIN MARKDOWN.
+Contexto:
+Industria: ${industry}
+Estilo: ${style}
+Colores: ${colors}
+Características: ${features}
   `.trim();
+
+  // -------------------------------
+  // PROVEEDORES
+  // -------------------------------
 
   async function tryOpenRouter() {
     console.log("TRY: OpenRouter");
@@ -58,7 +50,7 @@ DEVUELVE ÚNICAMENTE el JSON del array, SIN TEXTO EXPLICATIVO, SIN COMENTARIOS, 
         headers: {
           "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": "https://generador-temas-ecommerce.vercel.app/",
+          "HTTP-Referer": "https://generador-temas-ecommerce.vercel.app",
           "X-Title": "Generador de temas"
         },
         body: JSON.stringify({
@@ -71,9 +63,10 @@ DEVUELVE ÚNICAMENTE el JSON del array, SIN TEXTO EXPLICATIVO, SIN COMENTARIOS, 
         console.log("OpenRouter HTTP ERROR:", r.status, await r.text());
         return null;
       }
+
       const data = await r.json();
       console.log("OpenRouter OK");
-      return { provider: "openrouter", data };
+      return { provider: "openrouter", raw: data.choices?.[0]?.message?.content };
     } catch (e) {
       console.log("OpenRouter EXCEPTION:", e.message);
       return null;
@@ -99,9 +92,10 @@ DEVUELVE ÚNICAMENTE el JSON del array, SIN TEXTO EXPLICATIVO, SIN COMENTARIOS, 
         console.log("Groq HTTP ERROR:", r.status, await r.text());
         return null;
       }
+
       const data = await r.json();
       console.log("Groq OK");
-      return { provider: "groq", data };
+      return { provider: "groq", raw: data.choices?.[0]?.message?.content };
     } catch (e) {
       console.log("Groq EXCEPTION:", e.message);
       return null;
@@ -112,7 +106,8 @@ DEVUELVE ÚNICAMENTE el JSON del array, SIN TEXTO EXPLICATIVO, SIN COMENTARIOS, 
     console.log("TRY: Gemini");
     try {
       const r = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + process.env.GEMINI_API_KEY,
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
+          process.env.GEMINI_API_KEY,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -126,16 +121,20 @@ DEVUELVE ÚNICAMENTE el JSON del array, SIN TEXTO EXPLICATIVO, SIN COMENTARIOS, 
         console.log("Gemini HTTP ERROR:", r.status, await r.text());
         return null;
       }
+
       const data = await r.json();
       console.log("Gemini OK");
-      return { provider: "gemini", data };
+      return { provider: "gemini", raw: data.candidates?.[0]?.content?.parts?.[0]?.text };
     } catch (e) {
       console.log("Gemini EXCEPTION:", e.message);
       return null;
     }
   }
 
-  // Fallback chain
+  // -------------------------------
+  // FALLBACK
+  // -------------------------------
+
   let result = await tryOpenRouter();
   if (!result) result = await tryGroq();
   if (!result) result = await tryGemini();
@@ -144,25 +143,49 @@ DEVUELVE ÚNICAMENTE el JSON del array, SIN TEXTO EXPLICATIVO, SIN COMENTARIOS, 
     console.log("ALL PROVIDERS FAILED");
     return res.status(500).json({
       error: "Todas las APIs fallaron",
-      details: { openrouter: "fail", groq: "fail", gemini: "fail" }
+      ok: false
     });
   }
 
-  const { provider, data } = result;
+  const { provider, raw } = result;
 
-  // Extraer texto según proveedor
-  let raw;
-  if (provider === "groq" || provider === "openrouter") {
-    raw = data.choices?.[0]?.message?.content;
-  } else if (provider === "gemini") {
-    raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  console.log("RAW_FROM_PROVIDER:", provider, raw?.slice?.(0, 200));
+
+  // -------------------------------
+  // VALIDAR JSON
+  // -------------------------------
+
+  let files;
+  try {
+    files = JSON.parse(raw);
+  } catch (e) {
+    console.log("JSON PARSE ERROR:", e.message);
+    return res.status(500).json({
+      ok: false,
+      error: "JSON inválido devuelto por la IA",
+      provider,
+      rawSnippet: raw?.slice?.(0, 500)
+    });
   }
 
-  console.log("RAW_FROM_PROVIDER:", provider, typeof raw, raw?.slice?.(0, 200));
+  // -------------------------------
+  // GENERAR ZIP
+  // -------------------------------
 
-  // Devolvemos el texto crudo y el provider para depurar
-  return res.status(200).json({
-    provider,
-    raw
+  const zip = new JSZip();
+
+  files.forEach(file => {
+    if (file?.filename && file?.content !== undefined) {
+      zip.file(file.filename, file.content);
+    }
   });
+
+  const zipContent = await zip.generateAsync({ type: "nodebuffer" });
+
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", "attachment; filename=shopify-theme.zip");
+
+  console.log("ZIP_GENERATED_OK by", provider);
+
+  return res.send(zipContent);
 }
