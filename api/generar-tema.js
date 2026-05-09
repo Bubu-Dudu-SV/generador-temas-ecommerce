@@ -16,7 +16,9 @@ Devuelve los archivos como JSON: [{ filename, content }]
         method: "POST",
         headers: {
           "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://generador-temas-ecommerce.vercel.app/",
+          "X-Title": "Generador de temas"
         },
         body: JSON.stringify({
           model: "anthropic/claude-3-sonnet",
@@ -41,7 +43,7 @@ Devuelve los archivos como JSON: [{ filename, content }]
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          model: "llama3-70b-8192",
+          model: "llama-3.3-70b-versatile",
           messages: [{ role: "user", content: prompt }]
         })
       });
