@@ -52,7 +52,7 @@ DEVUELVE ÚNICAMENTE el JSON del array, SIN TEXTO EXPLICATIVO, SIN COMENTARIOS, 
           "X-Title": "Generador de temas"
         },
         body: JSON.stringify({
-          model: "anthropic/claude-3-sonnet",
+          model: "meta-llama/llama-3.1-70b-instruct",
           messages: [{ role: "user", content: prompt }]
         })
       });
