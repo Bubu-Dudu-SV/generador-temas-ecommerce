@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   const prompt = `
 Eres un experto en desarrollo de temas de Shopify.
 
-QUIERO QUE GENERES SOLO ARCHIVOS PARA UN TEMA DE SHOPIFY, CON ESTA ESTRUCTURA EXACTA:
+DEVUELVE EXCLUSIVAMENTE ESTE ARRAY JSON, SIN CAMBIAR NOMBRES NI CANTIDAD DE ARCHIVOS:
 
 [
   { "filename": "layout/theme.liquid", "content": "..." },
@@ -22,7 +22,17 @@ QUIERO QUE GENERES SOLO ARCHIVOS PARA UN TEMA DE SHOPIFY, CON ESTA ESTRUCTURA EX
   { "filename": "config/settings_schema.json", "content": "..." }
 ]
 
-NO AGREGUES MÁS ARCHIVOS, NO CAMBIES LOS NOMBRES.
+REGLAS ESTRICTAS:
+- NO agregues archivos adicionales.
+- NO cambies los nombres.
+- NO inventes secciones nuevas.
+- NO uses “main-content”, “hero-section”, “grid-section” ni otros nombres.
+- SOLO usa los nombres EXACTOS listados arriba.
+- El archivo templates/index.json DEBE referenciar EXACTAMENTE esas secciones.
+- El JSON debe ser válido y parseable.
+- NO incluyas texto fuera del array JSON.
+- NO incluyas markdown.
+
 
 Contexto del tema:
 - Plataforma: ${effectivePlatform}
