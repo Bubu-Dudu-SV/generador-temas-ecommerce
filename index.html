@@ -118,9 +118,14 @@ async function generateTheme() {
   });
 
   const data = await res.json();
-  document.getElementById('prompt').value = JSON.stringify(data, null, 2);
+
+  // Mostramos provider + raw para depuración
+  document.getElementById('prompt').value =
+    "Proveedor usado: " + data.provider + "\n\n" +
+    "Respuesta RAW:\n" + data.raw;
 }
 </script>
+
 
 
   
