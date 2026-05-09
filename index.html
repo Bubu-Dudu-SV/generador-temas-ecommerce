@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Generador de temas para tiendas</title>
+  <style>
+    body { font-family: sans-serif; max-width: 800px; margin: 40px auto; }
+    label { display: block; margin-top: 12px; font-weight: bold; }
+    input, select, textarea { width: 100%; padding: 8px; margin-top: 4px; }
+    button { margin-top: 16px; padding: 10px 16px; cursor: pointer; }
+    .prompt-box { margin-top: 24px; border: 1px solid #ccc; padding: 12px; background: #f9f9f9; }
+  </style>
+</head>
+<body>
+  <h1>Generador de prompt para temas de tienda</h1>
+  <p>Elige los datos y luego copia el prompt para pegarlo en Claude.</p>
+
+  <label>Plataforma</label>
+  <select id="platform">
+    <option value="shopify">Shopify</option>
+    <option value="wordpress">WordPress (WooCommerce)</option>
+    <option value="etsy">Etsy</option>
+  </select>
+
+  <label>Tipo de tienda</label>
+  <select id="industry">
+    <option value="comida">Comida / Restaurante</option>
+    <option value="zapatos">Zapatos</option>
+    <option value="joyeria">Joyería</option>
+    <option value="ropa">Ropa</option>
+    <option value="tecnologia">Tecnología</option>
+  </select>
+
+  <label>Estilo visual</label>
+  <select id="style">
+    <option value="minimalista">Minimalista</option>
+    <option value="elegante">Elegante</option>
+    <option value="moderno">Moderno</option>
+    <option value="colorido">Colorido</option>
+    <option value="oscuro">Oscuro</option>
+  </select>
+
+  <label>Colores principales (ej: #ff0000, blanco, dorado)</label>
+  <input id="colors" type="text" placeholder="#ff0000, blanco, dorado" />
+
+  <label>Características deseadas (ej: menú, reseñas, galería, blog)</label>
+  <input id="features" type="text" placeholder="menú, reseñas, galería" />
+
+  <button onclick="generatePrompt()">Generar prompt</button>
+
+  <div class="prompt-box">
+    <h3>Prompt para Claude</h3>
+    <textarea id="prompt" rows="14"></textarea>
+  </div>
+
+  <script>
+    function generatePrompt() {
+      const platform = document.getElementById('platform').value;
+      const industry = document.getElementById('industry').value;
+      const style = document.getElementById('style').value;
+      const colors = document.getElementById('colors').value;
+      const features = document.getElementById('features').value;
+
+      const prompt = `
+Eres un experto en diseño y desarrollo de temas para tiendas online.
+
+Quiero que generes un TEMA COMPLETO para la plataforma: ${platform}.
+
+Tipo de tienda: ${industry}
+Estilo visual: ${style}
+Colores principales: ${colors}
+Características que debe incluir: ${features}
+
+Objetivo:
+- Que el tema se vea profesional y listo para usar por un negocio real.
+- Que sea fácil de navegar y pensado para aumentar ventas.
+
+Instrucciones técnicas:
+- Si la plataforma es Shopify:
+  - Usa la estructura de un tema moderno basado en Dawn.
+  - Genera los archivos necesarios: plantillas (.json), secciones (.liquid), estilos (CSS), y configuración (settings_schema).
+  - Explica claramente qué archivos creas y qué hace cada uno.
+- Si la plataforma es WordPress (WooCommerce):
+  - Genera un tema hijo sencillo con archivos PHP básicos (index.php, functions.php, header.php, footer.php, etc.).
+- Si la plataforma es Etsy:
+  - Genera plantillas de diseño, textos y estructura recomendada para la tienda, aunque Etsy no use temas como tal.
+
+Formato de respuesta:
+1. Explica brevemente el concepto del diseño.
+2. Lista los archivos que propones crear.
+3. Muestra el contenido de cada archivo de forma clara y separada.
+4. Incluye textos de ejemplo adaptados a una tienda de ${industry}.
+
+Quiero que la respuesta sea lo más completa posible para poder copiar y pegar los archivos directamente.
+      `.trim();
+
+      document.getElementById('prompt').value = prompt;
+    }
+  </script>
+</body>
+</html>
