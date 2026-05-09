@@ -50,6 +50,8 @@
 
   <button onclick="generateTheme()">Generar tema automáticamente</button>
 
+  <button id="downloadBtn" onclick="downloadZip()" disabled>Descargar ZIP</button>
+
 
   <div class="prompt-box">
     <h3>Prompt para Claude</h3>
@@ -102,6 +104,8 @@ Quiero que la respuesta sea lo más completa posible para poder copiar y pegar l
   </script>
 
 <script>
+let lastRaw = null; // guardamos el JSON para el ZIP
+
 async function generateTheme() {
   const payload = {
     platform: document.getElementById('platform').value,
@@ -119,15 +123,36 @@ async function generateTheme() {
 
   const data = await res.json();
 
-  // Mostramos provider + raw para depuración
-  document.getElementById('prompt').value =
-    "Proveedor usado: " + data.provider + "\n\n" +
-    "Respuesta RAW:\n" + data.raw;
+  if (!data.raw) {
+    document.getElementById('prompt').value = "❌ Error generando archivos.";
+    document.getElementById('downloadBtn').disabled = true;
+    return;
+  }
+
+  // Intentamos parsear el JSON
+  try {
+    lastRaw = JSON.parse(data.raw);
+    document.getElementById('prompt').value =
+      "✔ Archivos generados correctamente con: " + data.provider +
+      "\n\nVista previa del JSON:\n" +
+      JSON.stringify(lastRaw, null, 2);
+
+    document.getElementById('downloadBtn').disabled = false;
+  } catch (e) {
+    document.getElementById('prompt').value =
+      "❌ Error: la IA devolvió JSON inválido.\n\nRAW:\n" + data.raw;
+
+    document.getElementById('downloadBtn').disabled = true;
+  }
+}
+</script>
+
+<script>
+function downloadZip() {
+  alert("Aquí irá la descarga del ZIP (siguiente paso).");
 }
 </script>
 
 
-
-  
 </body>
 </html>
