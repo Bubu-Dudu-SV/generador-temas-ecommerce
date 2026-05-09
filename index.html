@@ -48,6 +48,9 @@
 
   <button onclick="generatePrompt()">Generar prompt</button>
 
+  <button onclick="generateTheme()">Generar tema automáticamente</button>
+
+
   <div class="prompt-box">
     <h3>Prompt para Claude</h3>
     <textarea id="prompt" rows="14"></textarea>
@@ -97,5 +100,29 @@ Quiero que la respuesta sea lo más completa posible para poder copiar y pegar l
       document.getElementById('prompt').value = prompt;
     }
   </script>
+
+<script>
+async function generateTheme() {
+  const payload = {
+    platform: document.getElementById('platform').value,
+    industry: document.getElementById('industry').value,
+    style: document.getElementById('style').value,
+    colors: document.getElementById('colors').value,
+    features: document.getElementById('features').value
+  };
+
+  const res = await fetch('/api/generar-tema', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json();
+  document.getElementById('prompt').value = JSON.stringify(data, null, 2);
+}
+</script>
+
+
+  
 </body>
 </html>
