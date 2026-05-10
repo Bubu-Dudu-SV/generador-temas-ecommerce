@@ -1,191 +1,148 @@
 import JSZip from "jszip";
+import fs from "fs";
+import path from "path";
+import { Liquid } from "liquidjs";
+import { jsonrepair } from "jsonrepair";
 
 export default async function handler(req, res) {
-  const { industry, style, colors, features, platform } = req.body;
+  const { industry, style, colors, features } = req.body;
 
-  console.log("REQUEST_BODY:", { industry, style, colors, features, platform });
-
+  // -------------------------------
+  // PROMPT BLINDADO
+  // -------------------------------
   const prompt = `
-Eres un experto en desarrollo de temas de Shopify.
+Eres un experto en desarrollo de temas Shopify OS 2.0.
 
-DEVUELVE EXCLUSIVAMENTE ESTE ARRAY JSON, SIN CAMBIAR NOMBRES NI CANTIDAD DE ARCHIVOS:
+Debes generar EXCLUSIVAMENTE estos 4 archivos:
 
 [
-  { "filename": "layout/theme.liquid", "content": "..." },
+  { "filename": "sections/custom-hero.liquid", "content": "..." },
+  { "filename": "sections/custom-product-grid.liquid", "content": "..." },
   { "filename": "templates/index.json", "content": "..." },
-  { "filename": "sections/header.liquid", "content": "..." },
-  { "filename": "sections/footer.liquid", "content": "..." },
-  { "filename": "sections/main-hero.liquid", "content": "..." },
-  { "filename": "sections/product-grid.liquid", "content": "..." },
-  { "filename": "assets/theme.css", "content": "..." },
-  { "filename": "config/settings_schema.json", "content": "..." }
+  { "filename": "assets/custom.css", "content": "..." }
 ]
 
 REGLAS ESTRICTAS:
-- NO agregues archivos adicionales.
-- NO cambies los nombres.
-- NO inventes secciones nuevas.
-- SOLO usa los nombres EXACTOS listados arriba.
-- El archivo templates/index.json DEBE referenciar EXACTAMENTE esas secciones.
-- El JSON debe ser válido y parseable.
+- NO inventes secciones que no estén listadas.
+- NO inventes variables Liquid.
+- NO uses loops inexistentes.
+- NO uses "main-content" ni secciones de Dawn que no existan.
+- Liquid debe ser válido.
+- JSON debe ser válido y parseable.
+- index.json debe incluir "sections" y "order".
+- Usa Dawn como referencia oficial.
 - NO incluyas texto fuera del array JSON.
-- NO incluyas markdown.
 
 Contexto:
 Industria: ${industry}
 Estilo: ${style}
 Colores: ${colors}
 Características: ${features}
-  `.trim();
+`.trim();
 
   // -------------------------------
-  // PROVEEDORES
+  // PROVEEDORES (OpenRouter → Groq → Gemini)
   // -------------------------------
-
-  async function tryOpenRouter() {
-    console.log("TRY: OpenRouter");
+  async function callProvider(url, payload, headers, providerName) {
     try {
-      const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const r = await fetch(url, {
         method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://generador-temas-ecommerce.vercel.app",
-          "X-Title": "Generador de temas"
-        },
-        body: JSON.stringify({
-          model: "meta-llama/llama-3.1-70b-instruct",
-          messages: [{ role: "user", content: prompt }]
-        })
+        headers,
+        body: JSON.stringify(payload)
       });
 
-      if (!r.ok) {
-        console.log("OpenRouter HTTP ERROR:", r.status, await r.text());
-        return null;
-      }
+      if (!r.ok) return null;
 
       const data = await r.json();
-      console.log("OpenRouter OK");
-      return { provider: "openrouter", raw: data.choices?.[0]?.message?.content };
-    } catch (e) {
-      console.log("OpenRouter EXCEPTION:", e.message);
+      return { provider: providerName, raw: data.choices?.[0]?.message?.content };
+    } catch {
       return null;
     }
   }
 
-  async function tryGroq() {
-    console.log("TRY: Groq");
-    try {
-      const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [{ role: "user", content: prompt }]
-        })
-      });
-
-      if (!r.ok) {
-        console.log("Groq HTTP ERROR:", r.status, await r.text());
-        return null;
-      }
-
-      const data = await r.json();
-      console.log("Groq OK");
-      return { provider: "groq", raw: data.choices?.[0]?.message?.content };
-    } catch (e) {
-      console.log("Groq EXCEPTION:", e.message);
-      return null;
-    }
-  }
-
-  async function tryGemini() {
-    console.log("TRY: Gemini");
-    try {
-      const r = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
-          process.env.GEMINI_API_KEY,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts: [{ text: prompt }] }]
-          })
-        }
-      );
-
-      if (!r.ok) {
-        console.log("Gemini HTTP ERROR:", r.status, await r.text());
-        return null;
-      }
-
-      const data = await r.json();
-      console.log("Gemini OK");
-      return { provider: "gemini", raw: data.candidates?.[0]?.content?.parts?.[0]?.text };
-    } catch (e) {
-      console.log("Gemini EXCEPTION:", e.message);
-      return null;
-    }
-  }
-
-  // -------------------------------
-  // FALLBACK
-  // -------------------------------
-
-  let result = await tryOpenRouter();
-  if (!result) result = await tryGroq();
-  if (!result) result = await tryGemini();
+  let result =
+    await callProvider(
+      "https://openrouter.ai/api/v1/chat/completions",
+      { model: "meta-llama/llama-3.1-70b-instruct", messages: [{ role: "user", content: prompt }] },
+      {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      "openrouter"
+    ) ||
+    await callProvider(
+      "https://api.groq.com/openai/v1/chat/completions",
+      { model: "llama-3.3-70b-versatile", messages: [{ role: "user", content: prompt }] },
+      {
+        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      "groq"
+    );
 
   if (!result) {
-    console.log("ALL PROVIDERS FAILED");
-    return res.status(500).json({
-      error: "Todas las APIs fallaron",
-      ok: false
-    });
+    return res.status(500).json({ ok: false, error: "Todas las APIs fallaron" });
   }
 
-  const { provider, raw } = result;
-
-  console.log("RAW_FROM_PROVIDER:", provider, raw?.slice?.(0, 200));
+  let { raw } = result;
 
   // -------------------------------
-  // VALIDAR JSON
+  // REPARAR JSON
   // -------------------------------
+  try {
+    raw = jsonrepair(raw);
+  } catch {}
 
   let files;
   try {
     files = JSON.parse(raw);
-  } catch (e) {
-    console.log("JSON PARSE ERROR:", e.message);
-    return res.status(500).json({
-      ok: false,
-      error: "JSON inválido devuelto por la IA",
-      provider,
-      rawSnippet: raw?.slice?.(0, 500)
-    });
+  } catch {
+    return res.status(500).json({ ok: false, error: "JSON inválido" });
+  }
+
+  // -------------------------------
+  // VALIDAR LIQUID
+  // -------------------------------
+  const engine = new Liquid();
+  for (const f of files) {
+    if (f.filename.endsWith(".liquid")) {
+      try {
+        await engine.parse(f.content);
+      } catch {
+        return res.status(500).json({ ok: false, error: "Liquid inválido" });
+      }
+    }
   }
 
   // -------------------------------
   // GENERAR ZIP
   // -------------------------------
-
   const zip = new JSZip();
 
-  files.forEach(file => {
-    if (file?.filename && file?.content !== undefined) {
-      zip.file(file.filename, file.content);
+  // 1. Copiar Dawn completo
+  const dawnPath = path.join(process.cwd(), "base-theme", "dawn");
+  function addFolderToZip(folderPath, zipFolder) {
+    const items = fs.readdirSync(folderPath);
+    for (const item of items) {
+      const fullPath = path.join(folderPath, item);
+      const stats = fs.statSync(fullPath);
+      if (stats.isDirectory()) {
+        addFolderToZip(fullPath, zipFolder.folder(item));
+      } else {
+        zipFolder.file(item, fs.readFileSync(fullPath));
+      }
     }
+  }
+  addFolderToZip(dawnPath, zip);
+
+  // 2. Sobrescribir con archivos generados por IA
+  files.forEach(file => {
+    zip.file(file.filename, file.content);
   });
 
   const zipContent = await zip.generateAsync({ type: "nodebuffer" });
 
   res.setHeader("Content-Type", "application/zip");
   res.setHeader("Content-Disposition", "attachment; filename=shopify-theme.zip");
-
-  console.log("ZIP_GENERATED_OK by", provider);
-
   return res.send(zipContent);
 }
