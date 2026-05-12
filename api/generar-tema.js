@@ -114,7 +114,9 @@ Estilo visual: ${style}
 Colores principales: ${colors}
 Características deseadas: ${features}
 `.trim();
-
+  // ---------------------------------------------------------
+  // PROVEEDORES (Groq → OpenRouter)
+  // ---------------------------------------------------------
   async function callProvider(url, payload, headers, providerName) {
     try {
       const r = await fetch(url, {
@@ -129,7 +131,7 @@ Características deseadas: ${features}
       }
 
       const data = await r.json();
-      const raw = data.choices?.[0]?.message?.content;
+      const raw = data?.choices?.[0]?.message?.content;
       console.log(providerName, "RAW_SNIPPET:", raw?.slice?.(0, 200));
       return { provider: providerName, raw };
     } catch (e) {
@@ -138,16 +140,8 @@ Características deseadas: ${features}
     }
   }
 
+  // GROQ PRIMERO
   let result =
-    await callProvider(
-      "https://openrouter.ai/api/v1/chat/completions",
-      { model: "meta-llama/llama-3.1-70b-instruct", messages: [{ role: "user", content: prompt }] },
-      {
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      "openrouter"
-    ) ||
     await callProvider(
       "https://api.groq.com/openai/v1/chat/completions",
       { model: "llama-3.3-70b-versatile", messages: [{ role: "user", content: prompt }] },
@@ -156,6 +150,17 @@ Características deseadas: ${features}
         "Content-Type": "application/json"
       },
       "groq"
+    ) ||
+
+    // OPENROUTER SEGUNDO
+    await callProvider(
+      "https://openrouter.ai/api/v1/chat/completions",
+      { model: "meta-llama/llama-3.1-70b-instruct", messages: [{ role: "user", content: prompt }] },
+      {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      "openrouter"
     );
 
   if (!result) {
@@ -164,12 +169,18 @@ Características deseadas: ${features}
 
   let { raw } = result;
 
+  // ---------------------------------------------------------
+  // REPARAR JSON
+  // ---------------------------------------------------------
   try {
     raw = jsonrepair(raw);
   } catch (e) {
     console.log("JSONREPAIR ERROR:", e.message);
   }
 
+  // ---------------------------------------------------------
+  // PARSEAR JSON
+  // ---------------------------------------------------------
   let files;
   try {
     files = JSON.parse(raw);
@@ -189,6 +200,9 @@ Características deseadas: ${features}
     });
   }
 
+  // ---------------------------------------------------------
+  // FILTRAR BASURA
+  // ---------------------------------------------------------
   files = files.filter(
     f =>
       f &&
@@ -205,6 +219,9 @@ Características deseadas: ${features}
     });
   }
 
+  // ---------------------------------------------------------
+  // VALIDAR LIQUID
+  // ---------------------------------------------------------
   const engine = new Liquid();
   for (const f of files) {
     if (f.filename.endsWith(".liquid")) {
@@ -221,7 +238,9 @@ Características deseadas: ${features}
       }
     }
   }
-
+  // ---------------------------------------------------------
+  // GENERAR ZIP
+  // ---------------------------------------------------------
   const zip = new JSZip();
   const dawnPath = path.join(process.cwd(), "base-theme", "dawn");
 
