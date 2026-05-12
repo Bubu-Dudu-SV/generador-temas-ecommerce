@@ -5,15 +5,16 @@ import { Liquid } from "liquidjs";
 import { jsonrepair } from "jsonrepair";
 
 export default async function handler(req, res) {
-  const { industry, style, colors, features } = req.body;
+  const { industry, style, colors, features } = req.body || {};
 
-  // -------------------------------
-  // PROMPT ULTRA‑BLINDADO
-  // -------------------------------
+  if (!industry || !style) {
+    return res.status(400).json({ ok: false, error: "Faltan parámetros básicos" });
+  }
+
   const prompt = `
 Eres un experto en desarrollo de temas Shopify OS 2.0 con experiencia real en Dawn.
 
-Tu tarea es generar EXCLUSIVAMENTE los siguientes 4 archivos:
+Debes generar EXCLUSIVAMENTE este array JSON:
 
 [
   { "filename": "sections/custom-hero.liquid", "content": "..." },
@@ -22,158 +23,21 @@ Tu tarea es generar EXCLUSIVAMENTE los siguientes 4 archivos:
   { "filename": "assets/custom.css", "content": "..." }
 ]
 
-NO generes ningún archivo adicional.
-NO cambies los nombres.
-NO agregues propiedades extra.
-NO incluyas texto fuera del array JSON.
-NO uses markdown.
-NO expliques nada.
-NO agregues comentarios.
-NO agregues texto antes o después del array.
+REGLAS:
+- No generes archivos adicionales.
+- No cambies los nombres.
+- No agregues texto fuera del array JSON.
+- No uses markdown.
+- JSON debe ser válido y parseable.
+- Liquid debe ser válido.
 
-────────────────────────────────────────
-REGLAS ABSOLUTAS SOBRE LIQUID
-────────────────────────────────────────
-Solo puedes usar variables, objetos y filtros válidos de Shopify OS 2.0.
-
-OBJETOS PERMITIDOS:
-product, collection, article, blog, cart, customer, localization,
-routes, shop, settings, request, section, block
-
-OBJETOS PROHIBIDOS:
-products, collections, all_products, shop.products, shop.collections,
-pages, blogs, linklists, cualquier objeto no listado arriba
-
-FILTROS PERMITIDOS:
-escape, json, money, money_with_currency, img_url, image_url,
-asset_url, t, default, upcase, downcase, capitalize, slice,
-replace, replace_first
-
-FILTROS PROHIBIDOS:
-map, where, sort, uniq, compact, cualquier filtro no listado arriba
-
-REGLAS DE LOOPS:
-Solo puedes iterar sobre:
-- collection.products
-- section.blocks
-
-NO uses loops sobre arrays inventados.
-
-REGLAS DE VARIABLES:
-Solo puedes usar:
-- section.settings
-- section.blocks
-- block.settings
-
-NO inventes settings.
-NO inventes bloques.
-NO inventes propiedades.
-
-────────────────────────────────────────
-REGLAS SOBRE SECCIONES
-────────────────────────────────────────
-Debes generar SOLO estas dos secciones:
-
-1. sections/custom-hero.liquid  
-   - título, subtítulo, imagen, botón
-   - compatible con Theme Editor
-
-2. sections/custom-product-grid.liquid  
-   - mostrar productos de una colección
-   - usar SOLO collection.products
-   - NO inventar propiedades
-
-────────────────────────────────────────
-LISTA COMPLETA DE SECCIONES VÁLIDAS DE DAWN
-────────────────────────────────────────
-announcement-bar, apps, bulk-quick-order-list, cart-drawer,
-cart-icon-bubble, cart-live-region-text, cart-notification-button,
-cart-notification-product, collage, collapsible-content,
-collection-list, contact-form, custom-liquid, email-signup-banner,
-featured-blog, featured-collection, featured-product, footer-group,
-footer, header-group, header, image-banner, image-with-text,
-main-404, main-account, main-activate-account, main-addresses,
-main-article, main-blog, main-cart-footer, main-cart-items,
-main-collection-banner, main-collection-product-grid,
-main-list-collections, main-login, main-order, main-page,
-main-password-footer, main-password-header, main-product,
-main-register, main-reset-password, main-search, multicolumn,
-multirow, newsletter, page, pickup-availability, predictive-search,
-quick-order-list, related-products, rich-text, slideshow, video
-
-NO uses ninguna sección fuera de esta lista EXCEPTO:
-- custom-hero
-- custom-product-grid
-
-────────────────────────────────────────
-LISTA COMPLETA DE SNIPPETS VÁLIDOS DE DAWN
-────────────────────────────────────────
-article-card, buy-buttons, card-collection, card-product,
-cart-drawer, cart-notification, country-localization, facets,
-gift-card-recipient-form, header-drawer, header-dropdown-menu,
-header-mega-menu, header-search, icon-accordion, icon-with-text,
-language-localization, loading-spinner, meta-tags, pagination,
-price-facet, price, product-media-gallery, product-media-modal,
-product-media, product-thumbnail, product-variant-options,
-product-variant-picker, progress-bar, quantity-input,
-quick-order-list-row, quick-order-list, quick-order-product-row,
-share-button, social-icons, swatch-input, swatch, unit-price
-
-NO uses snippets fuera de esta lista.
-
-────────────────────────────────────────
-REGLAS PARA templates/index.json
-────────────────────────────────────────
-Debe tener EXACTAMENTE:
-
-{
-  "sections": {
-    "hero": { "type": "custom-hero", "settings": {} },
-    "grid": { "type": "custom-product-grid", "settings": {} }
-  },
-  "order": ["hero", "grid"]
-}
-
-────────────────────────────────────────
-REGLAS PARA assets/custom.css
-────────────────────────────────────────
-- Estilos simples
-- NO @import
-- NO frameworks
-- NO Tailwind
-- NO Bootstrap
-
-────────────────────────────────────────
-FORMATO DE RESPUESTA (OBLIGATORIO)
-────────────────────────────────────────
-Debes devolver EXCLUSIVAMENTE:
-
-[
-  { "filename": "sections/custom-hero.liquid", "content": "..." },
-  { "filename": "sections/custom-product-grid.liquid", "content": "..." },
-  { "filename": "templates/index.json", "content": "..." },
-  { "filename": "assets/custom.css", "content": "..." }
-]
-
-SIN TEXTO ANTES  
-SIN TEXTO DESPUÉS  
-SIN MARKDOWN  
-
-────────────────────────────────────────
-CONTEXTO DEL USUARIO
-────────────────────────────────────────
+Contexto:
 Industria: ${industry}
 Estilo visual: ${style}
 Colores principales: ${colors}
 Características deseadas: ${features}
-
-Usa este contexto SOLO para copywriting y estilos.
-NO modifiques la estructura técnica.
 `.trim();
 
-  // -------------------------------
-  // PROVEEDORES (OpenRouter → Groq)
-  // -------------------------------
   async function callProvider(url, payload, headers, providerName) {
     try {
       const r = await fetch(url, {
@@ -182,11 +46,17 @@ NO modifiques la estructura técnica.
         body: JSON.stringify(payload)
       });
 
-      if (!r.ok) return null;
+      if (!r.ok) {
+        console.log(providerName, "HTTP ERROR", r.status, await r.text());
+        return null;
+      }
 
       const data = await r.json();
-      return { provider: providerName, raw: data.choices?.[0]?.message?.content };
-    } catch {
+      const raw = data.choices?.[0]?.message?.content;
+      console.log(providerName, "RAW_SNIPPET:", raw?.slice?.(0, 200));
+      return { provider: providerName, raw };
+    } catch (e) {
+      console.log(providerName, "EXCEPTION:", e.message);
       return null;
     }
   }
@@ -217,58 +87,48 @@ NO modifiques la estructura técnica.
 
   let { raw } = result;
 
-  // -------------------------------
-  // REPARAR JSON
-  // -------------------------------
+  // Reparar JSON si viene con texto extra
   try {
     raw = jsonrepair(raw);
-  } catch {}
+  } catch (e) {
+    console.log("JSONREPAIR ERROR:", e.message);
+  }
 
-  // -------------------------------
-  // PARSEAR JSON
-  // -------------------------------
   let files;
   try {
     files = JSON.parse(raw);
-  } catch {
-    return res.status(500).json({ ok: false, error: "JSON inválido", raw });
+  } catch (e) {
+    console.log("JSON PARSE ERROR:", e.message);
+    return res.status(500).json({ ok: false, error: "JSON inválido devuelto por la IA", rawSnippet: raw?.slice?.(0, 400) });
   }
 
-  // -------------------------------
-  // FILTRAR ELEMENTOS INVÁLIDOS
-  // -------------------------------
   if (!Array.isArray(files)) {
-    return res.status(500).json({
-      ok: false,
-      error: "La IA no devolvió un array JSON",
-      raw
-    });
+    console.log("FILES NO ES ARRAY:", typeof files);
+    return res.status(500).json({ ok: false, error: "La IA no devolvió un array JSON", rawSnippet: raw?.slice?.(0, 400) });
   }
 
-  files = files.filter(f =>
-    f &&
-    typeof f === "object" &&
-    typeof f.filename === "string" &&
-    typeof f.content === "string"
+  // Filtrar basura
+  files = files.filter(
+    f =>
+      f &&
+      typeof f === "object" &&
+      typeof f.filename === "string" &&
+      typeof f.content === "string"
   );
 
   if (files.length === 0) {
-    return res.status(500).json({
-      ok: false,
-      error: "La IA devolvió un array vacío o inválido",
-      raw
-    });
+    console.log("FILES VACÍO TRAS FILTRO");
+    return res.status(500).json({ ok: false, error: "La IA devolvió un array vacío o inválido", rawSnippet: raw?.slice?.(0, 400) });
   }
 
-  // -------------------------------
-  // VALIDAR LIQUID
-  // -------------------------------
+  // Validar Liquid
   const engine = new Liquid();
   for (const f of files) {
-    if (typeof f.filename === "string" && f.filename.endsWith(".liquid")) {
+    if (f.filename.endsWith(".liquid")) {
       try {
         await engine.parse(f.content);
       } catch (err) {
+        console.log("LIQUID ERROR EN", f.filename, err.message);
         return res.status(500).json({
           ok: false,
           error: "Liquid inválido",
@@ -279,14 +139,10 @@ NO modifiques la estructura técnica.
     }
   }
 
-  // -------------------------------
-  // GENERAR ZIP
-  // -------------------------------
+  // Generar ZIP
   const zip = new JSZip();
 
-  // 1. Copiar Dawn completo
   const dawnPath = path.join(process.cwd(), "base-theme", "dawn");
-
   function addFolderToZip(folderPath, zipFolder) {
     const items = fs.readdirSync(folderPath);
     for (const item of items) {
@@ -298,3 +154,17 @@ NO modifiques la estructura técnica.
         zipFolder.file(item, fs.readFileSync(fullPath));
       }
     }
+  }
+
+  addFolderToZip(dawnPath, zip);
+
+  files.forEach(file => {
+    zip.file(file.filename, file.content);
+  });
+
+  const zipContent = await zip.generateAsync({ type: "nodebuffer" });
+
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", "attachment; filename=shopify-theme.zip");
+  return res.send(zipContent);
+}
