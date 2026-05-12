@@ -11,9 +11,6 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "Faltan parámetros básicos" });
   }
 
-  // ---------------------------------------------------------
-  // PROMPT BLINDADO + FIX DE SCHEMA
-  // ---------------------------------------------------------
   const prompt = `
 Eres un experto en desarrollo de temas Shopify OS 2.0 con experiencia real en Dawn.
 
@@ -118,9 +115,6 @@ Colores principales: ${colors}
 Características deseadas: ${features}
 `.trim();
 
-  // ---------------------------------------------------------
-  // PROVEEDORES (OpenRouter → Groq)
-  // ---------------------------------------------------------
   async function callProvider(url, payload, headers, providerName) {
     try {
       const r = await fetch(url, {
@@ -170,18 +164,12 @@ Características deseadas: ${features}
 
   let { raw } = result;
 
-  // ---------------------------------------------------------
-  // REPARAR JSON
-  // ---------------------------------------------------------
   try {
     raw = jsonrepair(raw);
   } catch (e) {
     console.log("JSONREPAIR ERROR:", e.message);
   }
 
-  // ---------------------------------------------------------
-  // PARSEAR JSON
-  // ---------------------------------------------------------
   let files;
   try {
     files = JSON.parse(raw);
@@ -201,9 +189,6 @@ Características deseadas: ${features}
     });
   }
 
-  // ---------------------------------------------------------
-  // FILTRAR BASURA
-  // ---------------------------------------------------------
   files = files.filter(
     f =>
       f &&
@@ -220,9 +205,6 @@ Características deseadas: ${features}
     });
   }
 
-  // ---------------------------------------------------------
-  // VALIDAR LIQUID
-  // ---------------------------------------------------------
   const engine = new Liquid();
   for (const f of files) {
     if (f.filename.endsWith(".liquid")) {
@@ -240,11 +222,7 @@ Características deseadas: ${features}
     }
   }
 
-  // ---------------------------------------------------------
-  // GENERAR ZIP
-  // ---------------------------------------------------------
   const zip = new JSZip();
-
   const dawnPath = path.join(process.cwd(), "base-theme", "dawn");
 
   function addFolderToZip(folderPath, zipFolder) {
