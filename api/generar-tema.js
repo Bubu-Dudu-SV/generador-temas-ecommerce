@@ -41,7 +41,7 @@ Características: ${features}
 `.trim();
 
   // -------------------------------
-  // PROVEEDORES (OpenRouter → Groq → Gemini)
+  // PROVEEDORES (OpenRouter → Groq)
   // -------------------------------
   async function callProvider(url, payload, headers, providerName) {
     try {
@@ -93,11 +93,40 @@ Características: ${features}
     raw = jsonrepair(raw);
   } catch {}
 
+  // -------------------------------
+  // PARSEAR JSON
+  // -------------------------------
   let files;
   try {
     files = JSON.parse(raw);
   } catch {
-    return res.status(500).json({ ok: false, error: "JSON inválido" });
+    return res.status(500).json({ ok: false, error: "JSON inválido", raw });
+  }
+
+  // -------------------------------
+  // FILTRAR ELEMENTOS INVÁLIDOS
+  // -------------------------------
+  if (!Array.isArray(files)) {
+    return res.status(500).json({
+      ok: false,
+      error: "La IA no devolvió un array JSON",
+      raw
+    });
+  }
+
+  files = files.filter(f =>
+    f &&
+    typeof f === "object" &&
+    typeof f.filename === "string" &&
+    typeof f.content === "string"
+  );
+
+  if (files.length === 0) {
+    return res.status(500).json({
+      ok: false,
+      error: "La IA devolvió un array vacío o inválido",
+      raw
+    });
   }
 
   // -------------------------------
@@ -105,11 +134,16 @@ Características: ${features}
   // -------------------------------
   const engine = new Liquid();
   for (const f of files) {
-    if (f.filename.endsWith(".liquid")) {
+    if (typeof f.filename === "string" && f.filename.endsWith(".liquid")) {
       try {
         await engine.parse(f.content);
-      } catch {
-        return res.status(500).json({ ok: false, error: "Liquid inválido" });
+      } catch (err) {
+        return res.status(500).json({
+          ok: false,
+          error: "Liquid inválido",
+          filename: f.filename,
+          message: err.message
+        });
       }
     }
   }
@@ -121,6 +155,7 @@ Características: ${features}
 
   // 1. Copiar Dawn completo
   const dawnPath = path.join(process.cwd(), "base-theme", "dawn");
+
   function addFolderToZip(folderPath, zipFolder) {
     const items = fs.readdirSync(folderPath);
     for (const item of items) {
@@ -133,6 +168,7 @@ Características: ${features}
       }
     }
   }
+
   addFolderToZip(dawnPath, zip);
 
   // 2. Sobrescribir con archivos generados por IA
