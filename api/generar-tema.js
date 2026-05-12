@@ -11,6 +11,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "Faltan parámetros básicos" });
   }
 
+  // ---------------------------------------------------------
+  // PROMPT BLINDADO (VERSIÓN ESTABLE, NO ULTRA)
+  // ---------------------------------------------------------
   const prompt = `
 Eres un experto en desarrollo de temas Shopify OS 2.0 con experiencia real en Dawn.
 
@@ -23,21 +26,91 @@ Debes generar EXCLUSIVAMENTE este array JSON:
   { "filename": "assets/custom.css", "content": "..." }
 ]
 
-REGLAS:
-- No generes archivos adicionales.
-- No cambies los nombres.
-- No agregues texto fuera del array JSON.
-- No uses markdown.
-- JSON debe ser válido y parseable.
-- Liquid debe ser válido.
+NO generes archivos adicionales.
+NO cambies los nombres.
+NO agregues texto fuera del array JSON.
+NO uses markdown.
+NO expliques nada.
 
-Contexto:
+────────────────────────────────────────
+REGLAS PARA SECCIONES SHOPIFY
+────────────────────────────────────────
+El schema de una sección Shopify SIEMPRE debe seguir este formato:
+
+{% schema %}
+{
+  "name": "Nombre de la sección",
+  "settings": [
+    { "type": "text", "id": "heading", "label": "Heading" }
+  ],
+  "blocks": [],
+  "presets": [{ "name": "Preset" }]
+}
+{% endschema %}
+
+REGLAS:
+- NO uses JSON Schema.
+- NO uses "type": "object".
+- NO uses "properties".
+- NO uses "required".
+- NO uses estructuras que no existan en Shopify.
+- SOLO usa settings válidos: text, textarea, image_picker, url, checkbox, select, range, color.
+
+────────────────────────────────────────
+SECCIÓN 1: custom-hero.liquid
+────────────────────────────────────────
+Debe incluir:
+- Título
+- Subtítulo
+- Imagen
+- Botón
+
+────────────────────────────────────────
+SECCIÓN 2: custom-product-grid.liquid
+────────────────────────────────────────
+Debe:
+- Permitir elegir una colección
+- Mostrar productos con:
+  - product.title
+  - product.url
+  - product.featured_image
+  - product.price
+
+NO inventes loops.
+NO inventes variables.
+
+────────────────────────────────────────
+TEMPLATE index.json
+────────────────────────────────────────
+Debe ser EXACTAMENTE:
+
+{
+  "sections": {
+    "hero": { "type": "custom-hero", "settings": {} },
+    "grid": { "type": "custom-product-grid", "settings": {} }
+  },
+  "order": ["hero", "grid"]
+}
+
+────────────────────────────────────────
+CSS
+────────────────────────────────────────
+- Estilos simples
+- NO frameworks
+- NO @import
+
+────────────────────────────────────────
+CONTEXTO DEL USUARIO
+────────────────────────────────────────
 Industria: ${industry}
 Estilo visual: ${style}
 Colores principales: ${colors}
 Características deseadas: ${features}
 `.trim();
 
+  // ---------------------------------------------------------
+  // PROVEEDORES (OpenRouter → Groq)
+  // ---------------------------------------------------------
   async function callProvider(url, payload, headers, providerName) {
     try {
       const r = await fetch(url, {
@@ -47,7 +120,7 @@ Características deseadas: ${features}
       });
 
       if (!r.ok) {
-        console.log(providerName, "HTTP ERROR", r.status, await r.text());
+        console.log(providerName, "HTTP ERROR", r.status);
         return null;
       }
 
@@ -87,84 +160,18 @@ Características deseadas: ${features}
 
   let { raw } = result;
 
-  // Reparar JSON si viene con texto extra
+  // ---------------------------------------------------------
+  // REPARAR JSON
+  // ---------------------------------------------------------
   try {
     raw = jsonrepair(raw);
   } catch (e) {
     console.log("JSONREPAIR ERROR:", e.message);
   }
 
+  // ---------------------------------------------------------
+  // PARSEAR JSON
+  // ---------------------------------------------------------
   let files;
   try {
-    files = JSON.parse(raw);
-  } catch (e) {
-    console.log("JSON PARSE ERROR:", e.message);
-    return res.status(500).json({ ok: false, error: "JSON inválido devuelto por la IA", rawSnippet: raw?.slice?.(0, 400) });
-  }
-
-  if (!Array.isArray(files)) {
-    console.log("FILES NO ES ARRAY:", typeof files);
-    return res.status(500).json({ ok: false, error: "La IA no devolvió un array JSON", rawSnippet: raw?.slice?.(0, 400) });
-  }
-
-  // Filtrar basura
-  files = files.filter(
-    f =>
-      f &&
-      typeof f === "object" &&
-      typeof f.filename === "string" &&
-      typeof f.content === "string"
-  );
-
-  if (files.length === 0) {
-    console.log("FILES VACÍO TRAS FILTRO");
-    return res.status(500).json({ ok: false, error: "La IA devolvió un array vacío o inválido", rawSnippet: raw?.slice?.(0, 400) });
-  }
-
-  // Validar Liquid
-  const engine = new Liquid();
-  for (const f of files) {
-    if (f.filename.endsWith(".liquid")) {
-      try {
-        await engine.parse(f.content);
-      } catch (err) {
-        console.log("LIQUID ERROR EN", f.filename, err.message);
-        return res.status(500).json({
-          ok: false,
-          error: "Liquid inválido",
-          filename: f.filename,
-          message: err.message
-        });
-      }
-    }
-  }
-
-  // Generar ZIP
-  const zip = new JSZip();
-
-  const dawnPath = path.join(process.cwd(), "base-theme", "dawn");
-  function addFolderToZip(folderPath, zipFolder) {
-    const items = fs.readdirSync(folderPath);
-    for (const item of items) {
-      const fullPath = path.join(folderPath, item);
-      const stats = fs.statSync(fullPath);
-      if (stats.isDirectory()) {
-        addFolderToZip(fullPath, zipFolder.folder(item));
-      } else {
-        zipFolder.file(item, fs.readFileSync(fullPath));
-      }
-    }
-  }
-
-  addFolderToZip(dawnPath, zip);
-
-  files.forEach(file => {
-    zip.file(file.filename, file.content);
-  });
-
-  const zipContent = await zip.generateAsync({ type: "nodebuffer" });
-
-  res.setHeader("Content-Type", "application/zip");
-  res.setHeader("Content-Disposition", "attachment; filename=shopify-theme.zip");
-  return res.send(zipContent);
-}
+    files = JSON.parse(raw
