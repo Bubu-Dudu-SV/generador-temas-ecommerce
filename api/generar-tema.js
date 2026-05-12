@@ -1,10 +1,10 @@
-import JSZip from "jszip";
-import fs from "fs";
-import path from "path";
-import { Liquid } from "liquidjs";
-import { jsonrepair } from "jsonrepair";
+const JSZip = require("jszip");
+const fs = require("fs");
+const path = require("path");
+const { Liquid } = require("liquidjs");
+const { jsonrepair } = require("jsonrepair");
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   const { industry, style, colors, features } = req.body || {};
 
   if (!industry || !style) {
@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   }
 
   // ---------------------------------------------------------
-  // PROMPT BLINDADO (VERSIÓN ESTABLE, NO ULTRA)
+  // PROMPT BLINDADO ESTABLE
   // ---------------------------------------------------------
   const prompt = `
 Eres un experto en desarrollo de temas Shopify OS 2.0 con experiencia real en Dawn.
@@ -48,13 +48,10 @@ El schema de una sección Shopify SIEMPRE debe seguir este formato:
 }
 {% endschema %}
 
-REGLAS:
-- NO uses JSON Schema.
-- NO uses "type": "object".
-- NO uses "properties".
-- NO uses "required".
-- NO uses estructuras que no existan en Shopify.
-- SOLO usa settings válidos: text, textarea, image_picker, url, checkbox, select, range, color.
+NO uses JSON Schema.
+NO uses "type": "object".
+NO uses "properties".
+NO uses "required".
 
 ────────────────────────────────────────
 SECCIÓN 1: custom-hero.liquid
@@ -75,9 +72,6 @@ Debe:
   - product.url
   - product.featured_image
   - product.price
-
-NO inventes loops.
-NO inventes variables.
 
 ────────────────────────────────────────
 TEMPLATE index.json
@@ -174,4 +168,91 @@ Características deseadas: ${features}
   // ---------------------------------------------------------
   let files;
   try {
-    files = JSON.parse(raw
+    files = JSON.parse(raw);
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      error: "JSON inválido devuelto por la IA",
+      rawSnippet: raw?.slice?.(0, 400)
+    });
+  }
+
+  if (!Array.isArray(files)) {
+    return res.status(500).json({
+      ok: false,
+      error: "La IA no devolvió un array JSON",
+      rawSnippet: raw?.slice?.(0, 400)
+    });
+  }
+
+  // ---------------------------------------------------------
+  // FILTRAR BASURA
+  // ---------------------------------------------------------
+  files = files.filter(
+    f =>
+      f &&
+      typeof f === "object" &&
+      typeof f.filename === "string" &&
+      typeof f.content === "string"
+  );
+
+  if (files.length === 0) {
+    return res.status(500).json({
+      ok: false,
+      error: "La IA devolvió un array vacío o inválido",
+      rawSnippet: raw?.slice?.(0, 400)
+    });
+  }
+
+  // ---------------------------------------------------------
+  // VALIDAR LIQUID
+  // ---------------------------------------------------------
+  const engine = new Liquid();
+  for (const f of files) {
+    if (f.filename.endsWith(".liquid")) {
+      try {
+        await engine.parse(f.content);
+      } catch (err) {
+        return res.status(500).json({
+          ok: false,
+          error: "Liquid inválido",
+          filename: f.filename,
+          message: err.message,
+          snippet: f.content.slice(0, 200)
+        });
+      }
+    }
+  }
+
+  // ---------------------------------------------------------
+  // GENERAR ZIP
+  // ---------------------------------------------------------
+  const zip = new JSZip();
+
+  const dawnPath = path.join(process.cwd(), "base-theme", "dawn");
+
+  function addFolderToZip(folderPath, zipFolder) {
+    const items = fs.readdirSync(folderPath);
+    for (const item of items) {
+      const fullPath = path.join(folderPath, item);
+      const stats = fs.statSync(fullPath);
+      if (stats.isDirectory()) {
+        addFolderToZip(fullPath, zipFolder.folder(item));
+      } else {
+        zipFolder.file(item, fs.readFileSync(fullPath));
+      }
+    }
+  }
+
+  addFolderToZip(dawnPath, zip);
+
+  files.forEach(file => {
+    zip.file(file.filename, file.content);
+  });
+
+  const zipContent = await zip.generateAsync({ type: "nodebuffer" });
+
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", "attachment; filename=shopify-theme.zip");
+  return res.send(zipContent);
+};
