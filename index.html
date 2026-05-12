@@ -63,7 +63,16 @@
       });
 
       if (!res.ok) {
-        document.getElementById('status').innerText = "❌ Error generando el tema.";
+        let msg = "❌ Error generando el tema.";
+        try {
+          const data = await res.json();
+          if (data?.error) msg += "\n\n" + data.error;
+          if (data?.rawSnippet) msg += "\n\nSnippet IA:\n" + data.rawSnippet;
+        } catch (e) {
+          msg += "\n\n(No se pudo leer el detalle del error)";
+        }
+        document.getElementById('status').innerText = msg;
+        document.getElementById('downloadBtn').disabled = true;
         return;
       }
 
